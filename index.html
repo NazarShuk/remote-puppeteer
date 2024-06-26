@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"
+            integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO"
+            crossorigin="anonymous"></script>
+
+    <title>Remote Puppeter</title>
+</head>
+<body>
+
+<canvas id="myCanvas" width="800" height="600" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100;"></canvas>
+<p id="responseTime">Url: </p>
+<label for="input"></label><input type="text" id="input" placeholder="url">
+<button onclick="goto()">Go</button>
+<label for="quality">Quality: </label><input type="range" min="0" max="100" id="quality" value="10" onchange="quality()" step="1">
+<script>
+    const socket = io();
+
+    const canvas = document.getElementById('myCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let responseTime = 0
+    let totalTime = 0
+    let totalRequests = 0
+
+    socket.on("connect", () => {
+        console.log("Connected")
+    })
+
+
+    socket.on("image", (data) => {
+        // Create an Image object
+        const img = new Image();
+
+        // Set the source of the image
+        img.src = data.screenshot;
+        img.onload = () => {
+            ctx.drawImage(img, 0, 0);
+        };
+
+        responseTime = Date.now().valueOf() - data.timestamp
+        totalRequests++;
+        totalTime += responseTime
+        responseTime = 0
+
+        document.getElementById("responseTime").innerHTML = "Average response time: " + Math.floor(totalTime/totalRequests) + "ms. Total requests: " + totalRequests
+
+
+    })
+    canvas.addEventListener("contextmenu", e => e.preventDefault())
+    canvas.addEventListener('mousedown', function (event) {
+        console.log("click")
+        // Calculate mouse position relative to canvas
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor(event.clientX - rect.left);
+        const y = Math.floor(event.clientY - rect.top);
+
+        // Output the pixel position
+        console.log('Clicked at: ' + x + ', ' + y);
+
+        // Example: Draw a small circle at the clicked position
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = event.button === 0 ? 'red' : 'blue';
+        ctx.fill();
+        console.log({x, y, button: event.button})
+        socket.emit("click", {x, y, button: event.button});
+
+    });
+
+    document.addEventListener('keydown', function (event) {
+        console.log(event.key)
+        socket.emit("keypress", event.key)
+    });
+    document.addEventListener('wheel', function (event) {
+        console.log(event.deltaY)
+        socket.emit("scroll", event.deltaY > 0 ? "up" : "down")
+    });
+
+    function goto(){
+        const url = document.getElementById("input").value
+        socket.emit("goto", url)
+    }
+
+    function quality(){
+        socket.emit("quality", document.getElementById("quality").value)
+    }
+
+    setInterval(() => {
+        socket.emit("request")
+    }, 1000)
+</script>
+</body>
+</html>
