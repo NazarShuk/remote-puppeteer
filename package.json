@@ -1,4 +1,4 @@
-{ "dependencies": { "@types/express": "^4.17.21", "buffer-to-data-url": "^1.0.0", "express": "^4.19.2", "puppeteer": "^22.12.0", "socket.io": "^4.7.5" }, "name": "remote-puppeter", "module": "index.ts", "type": "module", "devDependencies": {
+{ "dependencies": { "@types/express": "^4.17.21", "buffer-to-data-url": "^1.0.0", "express": "^4.19.2", "puppeteer": "^22.12.0", "puppeteer-extra": "^3.3.6", "puppeteer-extra-plugin-stealth": "^2.11.2", "socket.io": "^4.7.5" }, "name": "remote-puppeter", "module": "index.ts", "type": "module", "devDependencies": {
   "@types/bun": "latest"
 }, "peerDependencies": {
   "typescript": "^5.0.0"

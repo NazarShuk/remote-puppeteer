@@ -1,7 +1,8 @@
 import express from 'express';
 import {createServer} from 'http';
 import {Server} from 'socket.io';
-import * as puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-extra'
+import StealthPlugin from 'puppeteer-extra-plugin-stealth'
 import bufferToDataUrl from "buffer-to-data-url"
 
 const app = express();
@@ -12,13 +13,21 @@ app.get('/', (_req, res) => {
     res.sendFile('index.html', {root: __dirname});
 });
 
-let browser : puppeteer.Browser;
-let page : puppeteer.Page;
+let browser : any;
+let page : any;
+
+
 
 (async () => {
+    puppeteer.use(StealthPlugin())
     browser = await puppeteer.launch();
     page = await browser.newPage();
-    await page.goto('https://youtube.com');
+    page.setViewport({width: 1280, height: 720})
+    await page.goto('https://google.com/');
+    page.on('dialog', async (dialog) => {
+        console.log(dialog)
+        await dialog.accept();
+    });
 })();
 
 let quality = 10;
@@ -37,7 +46,7 @@ io.on('connection', async (socket) => {
         await page.mouse.click(pos.x,pos.y);
 
 
-        await sendImg()
+        //await sendImg()
     })
     socket.on("request", async() => {
         if (!page) return;
@@ -51,7 +60,7 @@ io.on('connection', async (socket) => {
         await page.keyboard.press(key);
         console.log(key)
 
-        await sendImg()
+        //await sendImg()
     })
     socket.on("scroll", async(direction) => {
         if (!page) return;
@@ -63,19 +72,29 @@ io.on('connection', async (socket) => {
             await page.mouse.wheel({deltaX: 0, deltaY: -100});
         }
 
-        await sendImg()
+        //await sendImg()
     })
     socket.on("goto", async(url) => {
         if (!page) return;
 
         await page.goto(url);
 
-        await sendImg()
+        //await sendImg()
     })
     socket.on("quality", async(q) => {
         quality = q
+        io.emit("quality", q)
+    })
+    socket.on("mousemove", async(pos) => {
+        if (!page) return;
+
+        await page.mouse.move(pos.x, pos.y);
+
     })
 });
+
+
+
 
 async function sendImg() {
     const screenshot = await page.screenshot({type:"jpeg", quality:quality});
@@ -85,4 +104,9 @@ async function sendImg() {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
+    setInterval(async () => {
+        if(!page) return
+
+        await sendImg()
+    },250)
 });
