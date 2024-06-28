@@ -17,9 +17,12 @@
 <p id="responseTime">Url: </p>
 <label for="input"></label><input type="text" id="input" placeholder="url">
 <button onclick="goto()">Go</button>
-<label for="quality">Quality: </label><input type="range" min="0" max="100" id="quality" value="10" onchange="quality()" step="1">
+<label for="quality">Quality: </label><input type="range" min="0" max="100" id="quality" value="0" onchange="quality()"
+                                             step="1" style="width:70%;">
 <script>
-    const socket = io();
+    const socket = io({
+        transports: ['websocket'],  // Use WebSocket only for faster communication
+    });
 
     const canvas = document.getElementById('myCanvas');
     const ctx = canvas.getContext('2d');
@@ -34,13 +37,30 @@
 
 
     socket.on("image", (data) => {
+        console.log("iamge received")
         // Create an Image object
         const img = new Image();
 
+        const buffer = data.screenshot
+        const blob = arrayBufferToBlob(buffer, 'image/png');
         // Set the source of the image
-        img.src = data.screenshot;
+        img.src = URL.createObjectURL(blob);
         img.onload = () => {
             ctx.drawImage(img, 0, 0);
+            Object.keys(cursors).forEach(id => {
+                const cursor = cursors[id];
+                ctx.beginPath();
+                ctx.arc(cursor.x, cursor.y, 7, 0, 2 * Math.PI);
+                ctx.fillStyle = 'white';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(cursor.x, cursor.y, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = 'black';
+                ctx.fill();
+
+                ctx.font = "10px Arial";
+                ctx.fillText(cursor.realName, cursor.x, cursor.y + 20);
+            })
         };
 
         responseTime = Date.now().valueOf() - data.timestamp
@@ -73,6 +93,12 @@
 
     });
 
+    let cursors = {}
+
+    socket.on("cursors", (curs) => {
+        cursors = curs
+    })
+
     document.addEventListener('keydown', function (event) {
         console.log(event.key)
         socket.emit("keypress", event.key)
@@ -90,18 +116,25 @@
         socket.emit("mousemove", {x, y});
     });
 
-    function goto(){
+    function goto() {
         const url = document.getElementById("input").value
         socket.emit("goto", url)
     }
 
-    function quality(){
+    function quality() {
         socket.emit("quality", document.getElementById("quality").value)
     }
 
     socket.on("quality", (q) => {
         document.getElementById("quality").value = q
     })
+    socket.on("server-msg", (msg) => {
+        alert("MESSAGE FROM SERVER:\n" + msg)
+    })
+
+    function arrayBufferToBlob(buffer, type) {
+        return new Blob([buffer], { type: type });
+    }
 
     //setInterval(() => {
     //    socket.emit("request")

@@ -3,19 +3,19 @@ import {createServer} from 'http';
 import {Server} from 'socket.io';
 import puppeteer from 'puppeteer-extra'
 import StealthPlugin from 'puppeteer-extra-plugin-stealth'
-import bufferToDataUrl from "buffer-to-data-url"
 
 const app = express();
 const server = createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    transports: ['websocket']
+});
 
 app.get('/', (_req, res) => {
     res.sendFile('index.html', {root: __dirname});
 });
 
-let browser : any;
-let page : any;
-
+let browser: any;
+let page: any;
 
 
 (async () => {
@@ -24,13 +24,24 @@ let page : any;
     page = await browser.newPage();
     page.setViewport({width: 1280, height: 720})
     await page.goto('https://google.com/');
-    page.on('dialog', async (dialog) => {
+    page.on('dialog', async (dialog: { accept: () => any; }) => {
         console.log(dialog)
         await dialog.accept();
     });
+    page.on('close', async () => {
+        io.emit('server-msg', "Page was closed, returning...")
+
+        doScreenshot = false
+        await page.goto('https://google.com/');
+        await page.waitForSelector('body');
+        doScreenshot = true
+
+    })
 })();
 
-let quality = 10;
+let quality = 0;
+
+let cursors = {}
 
 io.on('connection', async (socket) => {
     console.log('a user connected');
@@ -41,20 +52,24 @@ io.on('connection', async (socket) => {
     socket.on('disconnect', () => {
         console.log('user disconnected');
     });
-    socket.on("click", async(pos) => {
+    socket.on("click", async (pos) => {
         if (!page) return;
-        await page.mouse.click(pos.x,pos.y);
+        if (pos.button === 0) {
+            await page.mouse.click(pos.x, pos.y);
+        } else if (pos.button === 2) {
+            await page.mouse.click(pos.x, pos.y);
+        }
 
 
         //await sendImg()
     })
-    socket.on("request", async() => {
+    socket.on("request", async () => {
         if (!page) return;
 
 
         await sendImg()
     })
-    socket.on("keypress", async(key) => {
+    socket.on("keypress", async (key) => {
         if (!page) return;
 
         await page.keyboard.press(key);
@@ -62,31 +77,39 @@ io.on('connection', async (socket) => {
 
         //await sendImg()
     })
-    socket.on("scroll", async(direction) => {
+    socket.on("scroll", async (direction) => {
         if (!page) return;
 
-        if(direction === "up"){
+        if (direction === "up") {
             await page.mouse.wheel({deltaX: 0, deltaY: 100});
-        }
-        else if(direction === "down"){
+        } else if (direction === "down") {
             await page.mouse.wheel({deltaX: 0, deltaY: -100});
         }
 
         //await sendImg()
     })
-    socket.on("goto", async(url) => {
+    socket.on("goto", async (url) => {
         if (!page) return;
-
-        await page.goto(url);
+        try {
+            doScreenshot = false
+            await page.goto(url);
+            await page.waitForSelector('body');
+            doScreenshot = true
+        } catch (e) {
+            io.emit("server-msg", e)
+        }
 
         //await sendImg()
     })
-    socket.on("quality", async(q) => {
+    socket.on("quality", async (q) => {
         quality = q
         io.emit("quality", q)
     })
-    socket.on("mousemove", async(pos) => {
+    socket.on("mousemove", async (pos) => {
         if (!page) return;
+
+        // @ts-ignore
+        cursors[socket.id] = {x:pos.x,y:pos.y,realName: socket.data.name || "idk"}
 
         await page.mouse.move(pos.x, pos.y);
 
@@ -94,19 +117,30 @@ io.on('connection', async (socket) => {
 });
 
 
-
-
 async function sendImg() {
-    const screenshot = await page.screenshot({type:"jpeg", quality:quality});
-    io.emit('image', {screenshot:bufferToDataUrl("image/png", screenshot), timestamp: Date.now().valueOf()});
+    try {
+        const screenshot = await page.screenshot({type: "jpeg", quality: quality});
+        io.emit('image', {screenshot: screenshot, timestamp: Date.now().valueOf()});
+
+        //console.log(cursors)
+        io.emit('cursors', cursors)
+    } catch (e) {
+        io.emit("server-msg", e)
+    }
 }
+
+let doScreenshot = true
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     setInterval(async () => {
-        if(!page) return
+        if (!page) {
+            console.log("no page")
+            return
+        }
+        if (!doScreenshot) return
 
         await sendImg()
-    },250)
+    }, 10)
 });
